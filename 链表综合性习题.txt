@@ -1,0 +1,212 @@
+//建立动态单向链表，输出链表，写了一个del函数，用来删除动态链表中指定的结点
+//写了函数insert，用来向一个动态链表插入结点
+//加入主函数，实现链表的建立、输出、删除、插入
+#include <stdio.h>
+#include <stdlib.h>
+#define LEN sizeof(struct student)
+int n = 0;
+struct student {
+    long num;
+    float score;
+    struct student* next;
+};
+//创建学生链表。从标准输入读取学号和成绩，以学号为 0 结束输入
+struct student* create()
+{
+    struct student* head = NULL, * p1 = NULL, * p2 = NULL;
+    n = 0;
+
+    //首次分配内存并读取数据
+    p1 = (struct student*)malloc(LEN);
+    if (p1 == NULL) {
+        printf("错误：内存分配失败！\n");
+        return NULL;
+    }
+    p1->next = NULL;
+
+    printf("请输入学生数据 (学号, 成绩). 以 0, 0 结束:\n");
+    scanf_s(" %ld, %f", &p1->num, &p1->score);
+
+    while (p1->num != 0)
+    {
+        n = n + 1;
+        if (n == 1) {
+            head = p1;
+        }
+        else {
+            p2->next = p1;
+        }
+        p2 = p1;
+        p1 = (struct student*)malloc(LEN);
+        if (p1 == NULL) {
+            printf("错误：内存分配失败！\n");
+            if (p2 != NULL) p2->next = NULL;
+            break;
+        }
+        p1->next = NULL;
+        scanf_s(" %ld, %f", &p1->num, &p1->score);
+    }
+    if (p1 != NULL) {
+        free(p1);
+    }
+    return head;
+}
+
+//打印学生链表数据。链表头指针
+ 
+void print_student_list(struct student* head)
+{
+    struct student* p;
+    printf("\n输出数据，总共 %d 条:\n", n);
+    p = head;
+    if (head != NULL) {
+        do
+        {
+            printf("学号: %ld, 成绩: %5.2f\n", p->num, p->score);
+            p = p->next;
+        } while (p != NULL);
+    }
+    else {
+        printf("链表为空。\n");
+    }
+}
+
+//从学生链表中删除指定学号的节点。
+struct student* del(struct student* head, long num)
+{
+    struct student* p1 = head, * p2 = NULL;
+
+    if (head == NULL) {
+        printf("\n链表为空，无法删除\n");
+        return NULL;
+    }
+
+    while (p1 != NULL && p1->num != num) {
+        p2 = p1;        
+        p1 = p1->next;
+    }
+    if (p1 == NULL) {
+        printf("未找到学号 %ld 的学生\n", num);
+    }
+    else {
+        if (p1 == head) {
+            head = p1->next;
+        }
+        else {
+            p2->next = p1->next;
+        }
+
+        free(p1);
+        printf("成功删除学号 %ld 的学生\n", num);
+        n = n - 1;
+    }
+    return head;
+}
+
+//释放学生链表的所有内存。
+void free_student_list(struct student* head)
+{
+    struct student* current = head;
+    struct student* nextNode;
+
+    while (current != NULL)
+    {
+        nextNode = current->next;
+        free(current);
+        current = nextNode;
+    }
+    printf("学生链表所有内存已释放。\n");
+    n = 0; 
+}
+typedef struct Node
+{
+    int data;
+    struct Node* next;
+} Node;
+
+Node* insert(Node* head, int value)
+{
+    Node* newNode = (Node*)malloc(sizeof(Node));
+    if (newNode == NULL)
+    {
+        printf("错误：内存分配失败！\n");
+        return head;
+    }
+    newNode->data = value;
+    newNode->next = head;
+    return newNode;
+}
+
+void printList(Node* head)
+{
+    Node* current = head;
+
+    if (current == NULL)
+    {
+        printf("通用链表为空。\n");
+        return;
+    }
+
+    printf("通用链表数据: ");
+    while (current != NULL)
+    {
+        printf("%d -> ", current->data);
+        current = current->next;
+    }
+    printf("NULL\n");
+}
+
+void freeList(Node* head)
+{
+    Node* current = head;
+    Node* nextNode;
+
+    while (current != NULL)
+    {
+        nextNode = current->next;
+        free(current);
+        current = nextNode;
+    }
+    printf("通用链表所有内存已释放。\n");
+}
+
+
+// 主函数
+int main()
+{
+    struct student* student_head = NULL;
+    long delete_num_1 = 1003;
+    long delete_num_2 = 1001;
+
+    printf("--- 开始创建学生链表 ---\n");
+    printf("请按格式输入数据 (学号, 成绩)，例如: 1001, 88.5\n");
+    student_head = create();
+
+    //打印初始链表
+    print_student_list(student_head);
+
+    //删除中间或末尾的节点
+    printf("\n--- 尝试删除学号 %ld 的学生\n", delete_num_1);
+    student_head = del(student_head, delete_num_1);
+    print_student_list(student_head);
+
+    //删除头节点
+    printf("\n--- 尝试删除学号 %ld 的学生\n", delete_num_2);
+    student_head = del(student_head, delete_num_2);
+    print_student_list(student_head);
+
+    //释放学生链表内存
+    free_student_list(student_head);
+
+    printf("\n=================================================\n");
+    Node* list_head = NULL;
+    printf("\n---\n");
+    list_head = insert(list_head, 30);
+    list_head = insert(list_head, 20);
+    list_head = insert(list_head, 10);
+
+    printList(list_head);
+    freeList(list_head);
+
+    return 0;
+}
