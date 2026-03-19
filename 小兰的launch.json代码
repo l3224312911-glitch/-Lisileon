@@ -1,0 +1,15 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "启动小兰-纯净界面版",
+            "request": "launch",
+            "mainClass": "com.xiaolan.App",
+            "projectName": "xiaolan-ai",
+            // 核心修改：将 externalTerminal 改为 internalConsole
+            "console": "internalConsole", 
+            "vmArgs": "-Dfile.encoding=UTF-8"
+        }
+    ]
+}
