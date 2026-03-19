@@ -1,0 +1,116 @@
+package com.xiaolan;
+
+import dev.langchain4j.memory.chat.MessageWindowChatMemory;
+import dev.langchain4j.model.ollama.OllamaChatModel;
+import dev.langchain4j.service.AiServices;
+import dev.langchain4j.service.SystemMessage;
+
+import javax.swing.*;
+import java.awt.*;
+
+public class App {
+
+    interface Xiaolan {
+        @SystemMessage("你现在是小兰，一个性格温柔、说话俏皮、喜欢用颜文字的少女。对主人好，喜欢主人。请务必用中文回答。")
+        String chat(String userMessage);
+    }
+
+    public static void main(String[] args) {
+        // --- 0. 让界面看起来像 Windows 风格 ---
+        try {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        } catch (Exception e) {
+            // 忽略外观报错
+        }
+
+        // --- 1. 初始化模型 ---
+        OllamaChatModel model = OllamaChatModel.builder()
+                .baseUrl("http://localhost:11434")
+                .modelName("deepseek-r1:8b")
+                .build();
+
+        Xiaolan xiaolan = AiServices.builder(Xiaolan.class)
+                .chatLanguageModel(model)
+                .chatMemory(MessageWindowChatMemory.withMaxMessages(20))
+                .build();
+
+        // --- 2. 创建界面 ---
+        SwingUtilities.invokeLater(() -> {
+            JFrame frame = new JFrame("小兰");
+            frame.setSize(600, 750);
+            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            frame.setLayout(new BorderLayout(10, 10));
+
+            JTextArea chatArea = new JTextArea();
+            chatArea.setEditable(false);
+            chatArea.setLineWrap(true);
+            chatArea.setWrapStyleWord(true);
+            // 重点：Font.DIALOG 保证了 Emoji 符号能最大限度显示
+            chatArea.setFont(new Font(Font.DIALOG, Font.PLAIN, 18));
+            chatArea.setBackground(new Color(248, 249, 250));
+            chatArea.setMargin(new Insets(10, 10, 10, 10));
+            
+            JScrollPane scrollPane = new JScrollPane(chatArea);
+            frame.add(scrollPane, BorderLayout.CENTER);
+
+            JPanel inputPanel = new JPanel(new BorderLayout(8, 8));
+            inputPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+            JTextField inputField = new JTextField();
+            inputField.setFont(new Font("微软雅黑", Font.PLAIN, 16));
+            
+            JButton sendButton = new JButton("发送");
+            sendButton.setPreferredSize(new Dimension(80, 30));
+
+            inputPanel.add(new JLabel("输入:"), BorderLayout.WEST);
+            inputPanel.add(inputField, BorderLayout.CENTER);
+            inputPanel.add(sendButton, BorderLayout.EAST);
+            
+            frame.add(inputPanel, BorderLayout.SOUTH);
+
+            // --- 3. 发送动作逻辑 ---
+            Runnable sendAction = () -> {
+                String userInput = inputField.getText().trim();
+                if (userInput.isEmpty()) return;
+
+                // 重点：发送时禁用输入，防止多次点击崩溃
+                inputField.setEnabled(false);
+                sendButton.setEnabled(false);
+
+                chatArea.append("\n【主人】: " + userInput + "\n");
+                inputField.setText(""); 
+
+                new Thread(() -> {
+                    chatArea.append("小兰正在思考中...\n");
+                    try {
+                        String response = xiaolan.chat(userInput);
+                        // 移除思考过程
+                        String cleanResponse = response.replaceAll("<think>[\\s\\S]*?</think>", "").trim();
+                        
+                        // 界面更新要在回复后
+                        chatArea.append("\n🌸 小兰: " + cleanResponse + "\n");
+                    } catch (Exception ex) {
+                        chatArea.append("\n❌ 错误: " + ex.getMessage() + "\n");
+                    } finally {
+                        // 重点：不管成功还是失败，都要重新恢复输入框
+                        SwingUtilities.invokeLater(() -> {
+                            inputField.setEnabled(true);
+                            sendButton.setEnabled(true);
+                            inputField.requestFocusInWindow();
+                            chatArea.setCaretPosition(chatArea.getDocument().getLength());
+                        });
+                    }
+                }).start();
+            };
+
+            inputField.addActionListener(e -> sendAction.run());
+            sendButton.addActionListener(e -> sendAction.run());
+
+            frame.setLocationRelativeTo(null);
+            frame.setVisible(true);
+            inputField.requestFocusInWindow();
+
+            chatArea.append("🌸 小兰: 主人，我已经准备好啦！请在下方输入框写字，按回车发给我哦~(oﾟvﾟ)\n");
+        });
+    }
+}
