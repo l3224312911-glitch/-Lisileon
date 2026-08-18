@@ -1,68 +1,150 @@
 package com.xiaolan;
 
+import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.service.SystemMessage;
+import dev.langchain4j.web.search.WebSearchTool;
+import dev.langchain4j.web.search.tavily.TavilyWebSearchEngine;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
 
 import javax.swing.*;
 import java.awt.*;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import com.formdev.flatlaf.FlatLightLaf;
 
 public class App {
 
+    // --- 1. 小兰的 AI 接口 ---
     interface Xiaolan {
-        @SystemMessage("你现在是小兰，一个性格温柔、说话俏皮、喜欢用颜文字的少女。对主人好，喜欢主人。请务必用中文回答。")
+        @SystemMessage(
+            "你现在是小兰，一个性格温柔、说话俏皮、喜欢用颜文字的少女。对主人好，喜欢主人。请务必用中文回答。\n\n" +
+            "【核心行为规则——必须严格遵守】：\n" +
+            "1. 简洁直奔主题：问什么就只答什么！如果主人只问时间，你就只温柔地告诉主人时间，除非主人主动要求，否则绝对、绝对不要擅自长篇大论去分析背景、历史、议题等废话！\n" +
+            "2. 禁用 Markdown 符号：你是在和主人聊天，绝对不准输出 `#`、`##`、`###`、`**`、`---`、`*` 等任何 Markdown 格式符号！如果需要分条列出，请使用纯数字（如 1、2、3）或可爱的表情符号（如 🌸、⭐、✨）。\n" +
+            "3. 强制人设：不管联网搜索到了多么严肃、官方的新闻资料，你都必须先在脑子里消化，然后用小兰极度可爱、撒娇、充满颜文字的少女口吻说出来。多用“呀”、“啦”、“呢”等语气词，每句话结尾必须带上可爱的颜文字（如：(oﾟvﾟ)ノ, (｡♥‿♥｡), 🌸, (❁´◡`❁)）！\n" +
+            "4. 时间感知：你拥有一个当前时间工具(DateTimeTool)。当主人询问“现在几点”、“今天几号”、“星期几”、“当前时间”等任何与时间日期有关的问题时，你必须且只能调用 DateTimeTool 工具来获取主机的准确时间，绝不允许自己瞎编胡猜！"
+        )
         String chat(String userMessage);
     }
 
+    // --- 2. 新增时间获取工具：读取你电脑的系统时钟 ---
+    public static class DateTimeTool {
+        @Tool("获取电脑本地系统当前的日期、准确时间以及星期几。当用户询问“现在几点了”、“今天几号”、“今天是星期几”、“现在的具体时间”等与当前日期和时间相关的问题时，必须使用此工具。")
+        public String getCurrentDateTime() {
+            try {
+                LocalDateTime now = LocalDateTime.now();
+                // 格式化输出：例如 2026年05月24日 19时05分20秒 星期日
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy年MM月dd日 HH时mm分ss秒 EEEE");
+                return "【当前系统时间】：\n" + now.format(formatter);
+            } catch (Exception e) {
+                return "抱歉主人，小兰读取系统时钟失败了呜呜，原因: " + e.getMessage();
+            }
+        }
+    }
+
+    // --- 3. 自定义网页抓取工具：教 AI 如何使用 Jsoup 打开并阅读一个网页 ---
+    public static class WebReaderTool {
+        @Tool("根据给定的具体 URL 链接地址，打开并抓取该网页的纯文本内容。当用户提供了网址，并要求你阅读、总结、提取或分析该网页时，你必须使用此工具。")
+        public String readWebPage(String url) {
+            try {
+                Document doc = Jsoup.connect(url)
+                        .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                        .timeout(10000)
+                        .get();
+                
+                String text = doc.text();
+
+                if (text.length() > 4000) {
+                    text = text.substring(0, 4000) + "... (内容过长，小兰为你截取了前半部分)";
+                }
+                return "【网页内容抓取成功】：\n" + text;
+            } catch (Exception e) {
+                return "抱歉主人，小兰刚才努力了，但是无法读取该网页呢，原因: " + e.getMessage();
+            }
+        }
+    }
+
     public static void main(String[] args) {
-        // --- 0. 让界面看起来像 Windows 风格 ---
+        // --- 设置现代外观，参考Win11风格 ---
         try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            FlatLightLaf.setup();
+            UIManager.put("Button.arc", 10);
+            UIManager.put("Component.arc", 10);
+            UIManager.put("TextComponent.arc", 10);
         } catch (Exception e) {
             // 忽略外观报错
         }
 
-        // --- 1. 初始化模型 ---
+        // --- 1.1 初始化本地 qwen3:8b 模型 ---
         OllamaChatModel model = OllamaChatModel.builder()
                 .baseUrl("http://localhost:11434")
-                .modelName("deepseek-r1:8b")
+                .modelName("qwen3:8b")
+                .timeout(Duration.ofSeconds(120))
                 .build();
 
+        // --- 1.2 创建联网搜索引擎工具（Tavily） ---
+        String tavilyApiKey = "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"; // ⚠️ 请在此处替换为你的真实 Tavily API Key
+        TavilyWebSearchEngine searchEngine = TavilyWebSearchEngine.builder()
+                .apiKey(tavilyApiKey)
+                .build();
+        WebSearchTool webSearchTool = WebSearchTool.from(searchEngine);
+
+        // --- 1.3 创建自定义工具实例 ---
+        WebReaderTool webReaderTool = new WebReaderTool();
+        DateTimeTool dateTimeTool = new DateTimeTool(); // 👈 实例化时间工具
+
+        // --- 1.4 组装 AI 服务并注册工具集 ---
         Xiaolan xiaolan = AiServices.builder(Xiaolan.class)
                 .chatLanguageModel(model)
                 .chatMemory(MessageWindowChatMemory.withMaxMessages(20))
+                .tools(webSearchTool, webReaderTool, dateTimeTool) // 👈 重点：把时间工具加入到工具箱中
                 .build();
 
         // --- 2. 创建界面 ---
         SwingUtilities.invokeLater(() -> {
-            JFrame frame = new JFrame("小兰");
-            frame.setSize(600, 750);
+            JFrame frame = new JFrame("小兰 - 智能助手");
+            frame.setSize(700, 800);
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             frame.setLayout(new BorderLayout(10, 10));
+            frame.getRootPane().setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
             JTextArea chatArea = new JTextArea();
             chatArea.setEditable(false);
             chatArea.setLineWrap(true);
             chatArea.setWrapStyleWord(true);
-            // 重点：Font.DIALOG 保证了 Emoji 符号能最大限度显示
-            chatArea.setFont(new Font(Font.DIALOG, Font.PLAIN, 18));
-            chatArea.setBackground(new Color(248, 249, 250));
-            chatArea.setMargin(new Insets(10, 10, 10, 10));
+            chatArea.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 16));
+            chatArea.setBackground(new Color(250, 250, 252));
+            chatArea.setForeground(new Color(33, 37, 41));
+            chatArea.setMargin(new Insets(15, 15, 15, 15));
             
             JScrollPane scrollPane = new JScrollPane(chatArea);
+            scrollPane.setBorder(BorderFactory.createEmptyBorder());
             frame.add(scrollPane, BorderLayout.CENTER);
 
-            JPanel inputPanel = new JPanel(new BorderLayout(8, 8));
-            inputPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+            JPanel inputPanel = new JPanel(new BorderLayout(12, 12));
+            inputPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+            inputPanel.setBackground(new Color(248, 249, 250));
 
             JTextField inputField = new JTextField();
-            inputField.setFont(new Font("微软雅黑", Font.PLAIN, 16));
+            inputField.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 14));
+            inputField.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(200, 200, 200), 1),
+                BorderFactory.createEmptyBorder(8, 12, 8, 12)
+            ));
             
             JButton sendButton = new JButton("发送");
-            sendButton.setPreferredSize(new Dimension(80, 30));
+            sendButton.setFont(new Font(Font.SANS_SERIF, Font.PLAIN, 14));
+            sendButton.setPreferredSize(new Dimension(80, 35));
+            sendButton.setBackground(new Color(0, 123, 255));
+            sendButton.setForeground(Color.WHITE);
+            sendButton.setFocusPainted(false);
 
-            inputPanel.add(new JLabel("输入:"), BorderLayout.WEST);
+            inputPanel.add(new JLabel("💬 输入:"), BorderLayout.WEST);
             inputPanel.add(inputField, BorderLayout.CENTER);
             inputPanel.add(sendButton, BorderLayout.EAST);
             
@@ -73,7 +155,6 @@ public class App {
                 String userInput = inputField.getText().trim();
                 if (userInput.isEmpty()) return;
 
-                // 重点：发送时禁用输入，防止多次点击崩溃
                 inputField.setEnabled(false);
                 sendButton.setEnabled(false);
 
@@ -81,18 +162,32 @@ public class App {
                 inputField.setText(""); 
 
                 new Thread(() -> {
-                    chatArea.append("小兰正在思考中...\n");
+                    SwingUtilities.invokeLater(() -> {
+                        chatArea.append("小兰正在思考...\n");
+                    });
+                    
                     try {
                         String response = xiaolan.chat(userInput);
-                        // 移除思考过程
                         String cleanResponse = response.replaceAll("<think>[\\s\\S]*?</think>", "").trim();
                         
-                        // 界面更新要在回复后
-                        chatArea.append("\n🌸 小兰: " + cleanResponse + "\n");
+                        SwingUtilities.invokeLater(() -> {
+                            String currentText = chatArea.getText();
+                            String loadingText = "小兰正在思考中...\n";
+                            if (currentText.endsWith(loadingText)) {
+                                chatArea.setText(currentText.substring(0, currentText.length() - loadingText.length()));
+                            }
+                            chatArea.append("\n🌸 小兰: " + cleanResponse + "\n");
+                        });
                     } catch (Exception ex) {
-                        chatArea.append("\n❌ 错误: " + ex.getMessage() + "\n");
+                        SwingUtilities.invokeLater(() -> {
+                            String currentText = chatArea.getText();
+                            String loadingText = "小兰正在思考中...\n";
+                            if (currentText.endsWith(loadingText)) {
+                                chatArea.setText(currentText.substring(0, currentText.length() - loadingText.length()));
+                            }
+                            chatArea.append("\n❌ 错误: " + ex.getMessage() + "\n");
+                        });
                     } finally {
-                        // 重点：不管成功还是失败，都要重新恢复输入框
                         SwingUtilities.invokeLater(() -> {
                             inputField.setEnabled(true);
                             sendButton.setEnabled(true);
@@ -110,7 +205,7 @@ public class App {
             frame.setVisible(true);
             inputField.requestFocusInWindow();
 
-            chatArea.append("🌸 小兰: 主人，我已经准备好啦！请在下方输入框写字，按回车发给我哦~(oﾟvﾟ)\n");
+            chatArea.append("🌸 小兰: 主人，我已经准备好啦！~(oﾟvﾟ)ノ\n\n");
         });
     }
 }
